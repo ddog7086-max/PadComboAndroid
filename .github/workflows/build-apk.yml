@@ -31,6 +31,9 @@ jobs:
               -dname "CN=Android Debug, O=padcombo, C=HK"
           fi
 
+      - name: Run unit tests
+        run: gradle :app:testDebugUnitTest --no-daemon --stacktrace
+
       - name: Build debug APK
         run: gradle :app:assembleDebug --no-daemon --stacktrace
 
