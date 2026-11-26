@@ -1,0 +1,7 @@
+<resources>
+    <style name="Theme.PadCombo" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/accentPurple</item>
+        <item name="android:windowBackground">@color/pageBg</item>
+        <item name="android:statusBarColor">@color/topBar</item>
+    </style>
+</resources>

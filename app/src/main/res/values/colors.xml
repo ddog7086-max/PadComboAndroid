@@ -1,0 +1,12 @@
+<resources>
+    <color name="md_primary">#3F51B5</color>
+    <color name="topBar">#1C1C1C</color>
+    <color name="pageBg">#F4F4F4</color>
+    <color name="panelBg">#ECECEC</color>
+    <color name="btnGray">#C7C7C7</color>
+    <color name="btnGrayDark">#B8B8B8</color>
+    <color name="accentPurple">#9C4DCC</color>
+    <color name="textTitle">#6E6E6E</color>
+    <color name="textBody">#555555</color>
+    <color name="textLink">#8E24AA</color>
+</resources>
