@@ -16,8 +16,9 @@ android {
     }
 
     // 固定簽名 keystore，CI 每次打包共用同一簽名，可直接覆蓋安裝免解除安裝。
+    // AGP 預設已有名為 debug 的 SigningConfig，這裡只覆寫其憑證資訊。
     signingConfigs {
-        create("debug") {
+        getByName("debug") {
             storeFile = file("debug.keystore")
             storePassword = "android"
             keyAlias = "androiddebugkey"
