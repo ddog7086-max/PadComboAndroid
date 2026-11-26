@@ -123,8 +123,8 @@ object BoardRecognizer {
             for (ix in 0 until 3) {
                 val fx = inner + (ix / 2.0) * (1 - inner * 2)
                 val fy = inner + (iy / 2.0) * (1 - inner * 2)
-                val px = Math.round(roiX + (col + fx) * cellW)
-                val py = Math.round(roiY + (row + fy) * cellH)
+                val px = Math.round(roiX + (col + fx) * cellW).toInt()
+                val py = Math.round(roiY + (row + fy) * cellH).toInt()
                 if (px < 0 || px >= w || py < 0 || py >= h) continue
                 val pixel = bitmap.getPixel(px, py)
                 val r = (pixel shr 16) and 0xFF

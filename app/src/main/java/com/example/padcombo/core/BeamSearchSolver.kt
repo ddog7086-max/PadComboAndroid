@@ -110,8 +110,8 @@ object BeamSearchSolver {
                     val full = evaluatePath(originalBoard, p, cfg)
                     BeamState(p, full.score)
                 }
-                evaluated.sortByDescending { it.score }
-                beam = evaluated.take(beamW)
+                val ranked = evaluated.sortedByDescending { it.score }
+                beam = ranked.take(beamW)
             }
         }
 

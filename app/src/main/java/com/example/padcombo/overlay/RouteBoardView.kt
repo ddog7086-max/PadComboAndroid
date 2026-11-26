@@ -41,10 +41,10 @@ class RouteBoardView @JvmOverloads constructor(
         if (route.size < 2) return
 
         val rect = boardRect
-        val ox = rect.x * width
-        val oy = rect.y * height
-        val cellW = rect.width * width / COLS
-        val cellH = rect.height * height / ROWS
+        val ox = (rect.x * width).toFloat()
+        val oy = (rect.y * height).toFloat()
+        val cellW = (rect.width * width / COLS).toFloat()
+        val cellH = (rect.height * height / ROWS).toFloat()
         val cell = min(cellW, cellH)
 
         fun center(cellPos: Cell): Pair<Float, Float> {
