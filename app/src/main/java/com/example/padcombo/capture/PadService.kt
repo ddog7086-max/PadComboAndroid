@@ -18,6 +18,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.text.TextUtils
 import android.util.DisplayMetrics
 import android.view.Gravity
 import android.view.WindowManager
@@ -290,7 +291,7 @@ class PadService : Service() {
             orientation = LinearLayout.VERTICAL
             val padX = (18 * kd).toInt()
             val padY = (12 * kd).toInt()
-            val padEnd = (26 * kd).toInt()
+            val padEnd = (30 * kd).toInt()
             setPadding(padX, padY, padEnd, padY)
         }
         val combo = TextView(this).apply {
@@ -298,14 +299,17 @@ class PadService : Service() {
             textSize = 18f
             setTextColor(Color.WHITE)
             setTypeface(typeface, Typeface.BOLD)
+            maxLines = 1
             setSingleLine(true)
-            ellipsize = null
+            ellipsize = TextUtils.TruncateAt.END
         }
         val sub = TextView(this).apply {
             text = ""
             textSize = 11f
             setTextColor(0xFFD8D8D8.toInt())
+            maxLines = 1
             setSingleLine(true)
+            ellipsize = TextUtils.TruncateAt.END
             val lp = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
