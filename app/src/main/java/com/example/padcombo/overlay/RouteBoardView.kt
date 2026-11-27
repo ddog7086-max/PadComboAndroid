@@ -33,8 +33,8 @@ class RouteBoardView @JvmOverloads constructor(
     /** 是否顯示淡色 6×5 格網輔助線。 */
     var showGrid: Boolean = false
 
-    /** 重複路段平行錯開比例（相對格寬），單層 0.30，封頂 0.36。 */
-    var laneFraction: Float = 0.30f
+    /** 重複路段平行錯開比例（相對格寬），單層 0.39，封頂 0.42。 */
+    var laneFraction: Float = 0.39f
 
     private var route: List<Cell> = emptyList()
 
@@ -175,20 +175,29 @@ class RouteBoardView @JvmOverloads constructor(
 
             // 奇數次往 + 側、偶數次往 - 側，去回程分開；幅度隨次數階梯放大。
             val side = if (repeat % 2 == 1) 1f else -1f
-            // 單層 0.30 格寬，雙層封頂 0.36 格寬，偏移不超出格邊太多。
-            val frac = (laneFraction * min(repeat, 2)).coerceAtMost(0.36f)
+            // 單層 0.39 格寬，雙層封頂 0.42 格寬，偏移不超出格邊。
+            val frac = (laneFraction * min(repeat, 2)).coerceAtMost(0.42f)
             val magnitude = rect.cellSize * frac
             segOffset[i] = Pair(nx * side * magnitude, ny * side * magnitude)
         }
 
         // 頂點偏移 = 進入線段與離開線段偏移的平均，避免接縫處折線。
+        // 再把結果夾回盤面矩形內（留 0.12 格邊距），防止法向偏移把線段/箭頭
+        // 推出底行或撞出左右格邊，造成整體單向漂移的錯覺。
+        val inset = rect.cellSize * 0.12f
+        val minX = rect.left + inset
+        val maxX = rect.right - inset
+        val minY = rect.top + inset
+        val maxY = rect.bottom - inset
         val out = mutableListOf<Pair<Float, Float>>()
         for (i in base.indices) {
             val inc = if (i > 0) segOffset[i - 1] else null
             val outg = if (i < segOffset.size) segOffset[i] else null
             val ox = listOfNotNull(inc?.first, outg?.first).averageOrZero()
             val oy = listOfNotNull(inc?.second, outg?.second).averageOrZero()
-            out.add(base[i].first + ox to base[i].second + oy)
+            val x = (base[i].first + ox).coerceIn(minX, maxX)
+            val y = (base[i].second + oy).coerceIn(minY, maxY)
+            out.add(x to y)
         }
         return out
     }
