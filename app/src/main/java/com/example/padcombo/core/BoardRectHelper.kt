@@ -22,9 +22,10 @@ data class BoardRect(
 /**
  * 《パズドラ》直向螢幕 6×5 盤面計算：
  * - 盤面寬度佔滿螢幕，單格正方形，`cellSize = screenWidth / 6f`；
- * - 盤面高度 `boardHeight = cellSize * 5f`，緊貼螢幕底部；
- * - 頂部 `boardTop = screenHeight - boardHeight - bottomInset - bottomOffset`；
- * - [scale] 整體放大縮小（1f = 滿寬），[bottomOffset] 上下微調（正值再往下壓）。
+ * - 盤面高度 `boardHeight = cellSize * 5f`；
+ * - 預設把整盤往上抬 `topShift` 格（實機舊版貼底會偏下、第 1 排碰不到線）；
+ * - `boardTop = screenHeight - boardHeight - bottomInset - bottomOffset - topShift*cellSize`；
+ * - `boardBottom = boardTop + 5f * cellSize`；[scale] 整體放大縮小。
  */
 object BoardRectHelper {
 
@@ -34,10 +35,11 @@ object BoardRectHelper {
         scale: Float = 1f,
         bottomOffset: Float = 0f,
         bottomInset: Float = 0f,
+        topShift: Float = 0.9f,
     ): BoardRect {
         val cell = screenWidth / COLS.toFloat() * scale
         val boardHeight = cell * ROWS
-        val top = screenHeight - boardHeight - bottomInset - bottomOffset
+        val top = screenHeight - boardHeight - bottomInset - bottomOffset - topShift * cell
         // 滿寬時 left = 0；scale < 1 時置中保留左右邊距。
         val left = (screenWidth - cell * COLS) / 2f
         return BoardRect(left, top, cell)

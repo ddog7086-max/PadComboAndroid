@@ -78,7 +78,7 @@ class CoreLogicTest {
     fun boardRect_bottomAlignedSquareGrid() {
         val width = 1080
         val height = 2400
-        val rect = BoardRectHelper.compute(width, height)
+        val rect = BoardRectHelper.compute(width, height, topShift = 0f)
         val cell = width / 6f
         assertEquals(cell, rect.cellSize, 1e-4f)
         assertEquals(0f, rect.left, 1e-4f)
