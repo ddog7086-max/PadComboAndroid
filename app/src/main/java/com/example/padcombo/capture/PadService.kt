@@ -18,7 +18,6 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
-import android.text.TextUtils
 import android.util.DisplayMetrics
 import android.view.Gravity
 import android.view.WindowManager
@@ -301,7 +300,11 @@ class PadService : Service() {
             setTypeface(typeface, Typeface.BOLD)
             maxLines = 1
             setSingleLine(true)
-            ellipsize = TextUtils.TruncateAt.END
+            ellipsize = null
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            )
         }
         val sub = TextView(this).apply {
             text = ""
@@ -309,7 +312,7 @@ class PadService : Service() {
             setTextColor(0xFFD8D8D8.toInt())
             maxLines = 1
             setSingleLine(true)
-            ellipsize = TextUtils.TruncateAt.END
+            ellipsize = null
             val lp = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,

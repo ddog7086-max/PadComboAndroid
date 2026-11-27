@@ -137,7 +137,7 @@ class RouteBoardView @JvmOverloads constructor(
     /**
      * 統一邊界夾取：所有頂點、偏移點、貝塞爾控制點送入 Path 前都先過這裡。
      * - 水平：`[left + 0.18cell, right - 0.18cell]`
-     * - 垂直：`[top + 0.18cell, bottom - 0.42cell]`（底邊留 0.42 格，保底行折返回角不踩出）
+     * - 垂直：`[top + 0.18cell, bottom - 0.45cell]`（底邊留 0.45 格，保底行折返回角不踩出）
      */
     private fun clampPointToBoard(
         rect: BoardRect,
@@ -146,7 +146,7 @@ class RouteBoardView @JvmOverloads constructor(
     ): Pair<Float, Float> {
         val insetX = rect.cellSize * 0.18f
         val insetTop = rect.cellSize * 0.18f
-        val insetBottom = rect.cellSize * 0.42f
+        val insetBottom = rect.cellSize * 0.45f
         val cx = x.coerceIn(rect.left + insetX, rect.right - insetX)
         val cy = y.coerceIn(rect.top + insetTop, rect.bottom - insetBottom)
         return cx to cy
