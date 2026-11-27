@@ -58,6 +58,9 @@ class RouteBoardView @JvmOverloads constructor(
         val density = resources.displayMetrics.density
         val pts = buildOffsetPoints(route, rect, density)
 
+        // 底部安全邊界：相對 boardBottom 再留 0.08 格，座標夾取與硬裁剪共用同一條上限。
+        val safeBottom = rect.bottom - rect.cellSize * 0.08f
+
         val whiteWidth = 2.2f * density
         val blackWidth = 4.2f * density
 
@@ -78,6 +81,11 @@ class RouteBoardView @JvmOverloads constructor(
 
         val cornerRadius = rect.cellSize * 0.22f
         val curve = buildRoundedPath(pts, cornerRadius, rect)
+
+        // 雙重保險：座標已夾取，這裡再用 clipRect 把整塊繪製區域硬性鎖在盤面內。
+        canvas.save()
+        canvas.clipRect(rect.left, rect.top, rect.right, safeBottom)
+
         canvas.drawPath(curve, blackPaint)
         canvas.drawPath(curve, whitePaint)
 
@@ -132,12 +140,13 @@ class RouteBoardView @JvmOverloads constructor(
             canvas.drawPath(arrowPath(1.35f), blackFill)
             canvas.drawPath(arrowPath(1.0f), whiteFill)
         }
+        canvas.restore()
     }
 
     /**
      * 統一邊界夾取：所有頂點、偏移點、貝塞爾控制點送入 Path 前都先過這裡。
      * - 水平：`[left + 0.18cell, right - 0.18cell]`
-     * - 垂直：`[top + 0.18cell, bottom - 0.45cell]`（底邊留 0.45 格，保底行折返回角不踩出）
+     * - 垂直：`[top + 0.18cell, bottom - 0.08cell]`；底部再由 clipRect 硬性裁剪兜底。
      */
     private fun clampPointToBoard(
         rect: BoardRect,
@@ -146,7 +155,7 @@ class RouteBoardView @JvmOverloads constructor(
     ): Pair<Float, Float> {
         val insetX = rect.cellSize * 0.18f
         val insetTop = rect.cellSize * 0.18f
-        val insetBottom = rect.cellSize * 0.45f
+        val insetBottom = rect.cellSize * 0.08f
         val cx = x.coerceIn(rect.left + insetX, rect.right - insetX)
         val cy = y.coerceIn(rect.top + insetTop, rect.bottom - insetBottom)
         return cx to cy
