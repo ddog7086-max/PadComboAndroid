@@ -288,7 +288,7 @@ class PadService : Service() {
         val panel = FrameLayout(this)
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            val padX = (16 * kd).toInt()
+            val padX = (18 * kd).toInt()
             val padY = (12 * kd).toInt()
             setPadding(padX, padY, padX, padY)
         }

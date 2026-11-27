@@ -33,8 +33,8 @@ class RouteBoardView @JvmOverloads constructor(
     /** 是否顯示淡色 6×5 格網輔助線。 */
     var showGrid: Boolean = false
 
-    /** 重複路段平行錯開比例（相對格寬），單層約 0.18，雙層封頂 0.28。 */
-    var laneFraction: Float = 0.18f
+    /** 重複路段平行錯開比例（相對格寬），單層 0.30，封頂 0.36。 */
+    var laneFraction: Float = 0.30f
 
     private var route: List<Cell> = emptyList()
 
@@ -57,9 +57,20 @@ class RouteBoardView @JvmOverloads constructor(
 
         val pts = offsetRepeatedCells(route, rect)
 
+        val density = resources.displayMetrics.density
         val cell = rect.cellSize
-        val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            strokeWidth = cell * 0.085f
+        val whiteWidth = 2.5f * density
+        val blackWidth = whiteWidth * 1.8f
+
+        val blackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            strokeWidth = blackWidth
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+            style = Paint.Style.STROKE
+            color = Color.BLACK
+        }
+        val whitePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            strokeWidth = whiteWidth
             strokeCap = Paint.Cap.ROUND
             strokeJoin = Paint.Join.ROUND
             style = Paint.Style.STROKE
@@ -74,17 +85,25 @@ class RouteBoardView @JvmOverloads constructor(
             curve.quadTo(pts[i].first, pts[i].second, mx, my)
         }
         curve.lineTo(pts.last().first, pts.last().second)
-        canvas.drawPath(curve, linePaint)
+        // 雙層描邊：先黑框底層，再疊細白線。
+        canvas.drawPath(curve, blackPaint)
+        canvas.drawPath(curve, whitePaint)
 
-        // 起點白圓點
+        // 起點白圓點（先畫較大黑底再疊白點）
         val start = pts[0]
-        val startPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        val dotR = cell * 0.14f
+        val blackFill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            style = Paint.Style.FILL
+        }
+        val whiteFill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
             style = Paint.Style.FILL
         }
-        canvas.drawCircle(start.first, start.second, cell * 0.14f, startPaint)
+        canvas.drawCircle(start.first, start.second, dotR * 1.5f, blackFill)
+        canvas.drawCircle(start.first, start.second, dotR, whiteFill)
 
-        // 終點白箭頭（沿最後一段方向）
+        // 終點白箭頭（先畫較大黑底三角再疊白三角，沿最後一段方向）
         val prev = pts[pts.size - 2]
         val end = pts.last()
         val dx = end.first - prev.first
@@ -96,18 +115,24 @@ class RouteBoardView @JvmOverloads constructor(
             val px = -uy
             val py = ux
             val s = cell * 0.18f
-            val arrow = Path()
-            arrow.moveTo(end.first, end.second)
-            arrow.lineTo(
-                end.first - ux * s + px * s * 0.6f,
-                end.second - uy * s + py * s * 0.6f,
-            )
-            arrow.lineTo(
-                end.first - ux * s - px * s * 0.6f,
-                end.second - uy * s - py * s * 0.6f,
-            )
-            arrow.close()
-            canvas.drawPath(arrow, startPaint)
+
+            fun arrowPath(scale: Float): Path {
+                val sp = s * scale
+                val a = Path()
+                a.moveTo(end.first, end.second)
+                a.lineTo(
+                    end.first - ux * sp + px * sp * 0.6f,
+                    end.second - uy * sp + py * sp * 0.6f,
+                )
+                a.lineTo(
+                    end.first - ux * sp - px * sp * 0.6f,
+                    end.second - uy * sp - py * sp * 0.6f,
+                )
+                a.close()
+                return a
+            }
+            canvas.drawPath(arrowPath(1.4f), blackFill)
+            canvas.drawPath(arrowPath(1.0f), whiteFill)
         }
     }
 
@@ -150,8 +175,8 @@ class RouteBoardView @JvmOverloads constructor(
 
             // 奇數次往 + 側、偶數次往 - 側，去回程分開；幅度隨次數階梯放大。
             val side = if (repeat % 2 == 1) 1f else -1f
-            // 單層 0.18 格寬，雙層封頂 0.28 格寬，避免偏移過頭撞歪鄰珠。
-            val frac = (laneFraction * min(repeat, 2)).coerceAtMost(0.28f)
+            // 單層 0.30 格寬，雙層封頂 0.36 格寬，偏移不超出格邊太多。
+            val frac = (laneFraction * min(repeat, 2)).coerceAtMost(0.36f)
             val magnitude = rect.cellSize * frac
             segOffset[i] = Pair(nx * side * magnitude, ny * side * magnitude)
         }
