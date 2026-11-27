@@ -12,11 +12,15 @@ import com.example.padcombo.core.BoardRect
 import com.example.padcombo.core.Cell
 import com.example.padcombo.core.COLS
 import com.example.padcombo.core.ROWS
+import kotlin.math.max
+import kotlin.math.min
 
 /**
- * 遊戲內懸浮疊加層：細白二次貝塞爾平滑曲線，起點白圓點、終點白箭頭，
- * 中段不畫分段箭頭；折返處自然繞行。盤面矩形 [boardRect] 與辨識共用同一套計算，
- * 格心座標 cx = left + (col + 0.5f) * cellSize、cy = top + (row + 0.5f) * cellSize。
+ * 遊戲內懸浮疊加層：細白二次貝塞爾平滑曲線，起點白圓點、終點白箭頭。
+ * 盤面矩形 [boardRect] 與辨識共用同一套計算。
+ *
+ * 路徑層次錯開：重複經過的格子沿「垂直於行進方向」左右偏移，避免折返/重疊
+ * 時線條壓在同一條上；偏移量 [laneOffsetPx] 可調（約 5～8px）。
  */
 class RouteBoardView @JvmOverloads constructor(
     context: Context,
@@ -28,6 +32,9 @@ class RouteBoardView @JvmOverloads constructor(
 
     /** 是否顯示淡色 6×5 格網輔助線。 */
     var showGrid: Boolean = false
+
+    /** 重複路段垂直錯開偏移（px），約 5～8px。 */
+    var laneOffsetPx: Float = 6f
 
     private var route: List<Cell> = emptyList()
 
@@ -48,7 +55,7 @@ class RouteBoardView @JvmOverloads constructor(
         if (showGrid) drawGrid(canvas, rect)
         if (route.size < 2) return
 
-        val pts = route.map { (r, c) -> rect.center(c, r) }
+        val pts = offsetRepeatedCells(route, rect)
 
         val cell = rect.cellSize
         val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -104,18 +111,61 @@ class RouteBoardView @JvmOverloads constructor(
         }
     }
 
+    /**
+     * 統計每格造訪次序；重複造訪的頂點沿垂直於當地切線方向左右錯開。
+     * 第一次造訪不偏移，之後依造訪次數在正負側交替展開。
+     */
+    private fun offsetRepeatedCells(
+        route: List<Cell>,
+        rect: BoardRect,
+    ): List<Pair<Float, Float>> {
+        val base = route.map { (r, c) -> rect.center(c, r) }
+        if (base.size < 2) return base
+
+        val seen = HashMap<Cell, Int>()
+        val occurrence = IntArray(route.size)
+        for (i in route.indices) {
+            val k = seen[route[i]] ?: 0
+            occurrence[i] = k
+            seen[route[i]] = k + 1
+        }
+
+        val out = base.toMutableList()
+        for (i in route.indices) {
+            val repeat = occurrence[i]
+            if (repeat == 0) continue
+
+            val prev = base[max(0, i - 1)]
+            val next = base[min(base.size - 1, i + 1)]
+            var tx = next.first - prev.first
+            var ty = next.second - prev.second
+            val tangentLen = Math.hypot(tx.toDouble(), ty.toDouble()).toFloat()
+            if (tangentLen < 1f) continue
+            tx /= tangentLen
+            ty /= tangentLen
+
+            // 垂直於行進方向
+            val nx = -ty
+            val ny = tx
+            val side = if (repeat % 2 == 1) 1f else -1f
+            val magnitude = laneOffsetPx * min(repeat, 2)
+
+            val (bx, by) = base[i]
+            out[i] = (bx + nx * side * magnitude) to (by + ny * side * magnitude)
+        }
+        return out
+    }
+
     private fun drawGrid(canvas: Canvas, rect: BoardRect) {
         val gridPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = 0x55FFFFFF
             strokeWidth = 1f
             style = Paint.Style.STROKE
         }
-        // 垂直線
         for (c in 0..COLS) {
             val x = rect.left + c * rect.cellSize
             canvas.drawLine(x, rect.top, x, rect.bottom, gridPaint)
         }
-        // 水平線
         for (r in 0..ROWS) {
             val y = rect.top + r * rect.cellSize
             canvas.drawLine(rect.left, y, rect.right, y, gridPaint)

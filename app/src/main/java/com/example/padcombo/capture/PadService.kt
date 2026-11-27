@@ -6,7 +6,9 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.Typeface
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
 import android.media.ImageReader
@@ -59,7 +61,9 @@ class PadService : Service() {
     private var routeRoot: FrameLayout? = null
     private var controlBar: FrameLayout? = null
     private var analyzeBtn: ImageButton? = null
-    private var resultView: TextView? = null
+    private var scorePanel: FrameLayout? = null
+    private var comboView: TextView? = null
+    private var subView: TextView? = null
 
     private var projection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
@@ -184,12 +188,12 @@ class PadService : Service() {
 
         solverExecutor.execute {
             val result = BeamSearchSolver.beamSearch(board, searchConfig)
+            val cleared = result.clearStat.values.sum()
             mainHandler.post {
                 overlay?.boardRect = rect
                 overlay?.show(board, result.path)
-                val cleared = result.clearStat.values.sum()
-                resultView?.text =
-                    "${result.predictedCombo}c · ${result.path.size}步 · ${cleared}消"
+                comboView?.text = "${result.predictedCombo} Combo"
+                subView?.text = "${result.path.size} 步 · ${cleared} 消"
                 restoreAnalyzeBtn()
             }
         }
@@ -261,15 +265,6 @@ class PadService : Service() {
         }
         row.addView(closeBtn)
         col.addView(row)
-
-        resultView = TextView(this).apply {
-            text = "—"
-            textSize = 9f
-            setTextColor(0xFFEEEEEE.toInt())
-            setBackgroundColor(0xAA000000.toInt())
-            setPadding(6, 3, 6, 3)
-        }
-        col.addView(resultView)
         bar.addView(col)
 
         val barParams = WindowManager.LayoutParams(
@@ -289,9 +284,53 @@ class PadService : Service() {
         barParams.y = 48
         windowManager.addView(bar, barParams)
 
+        // 左上角注數顯示區塊：Combo 大字 + 步數/消除小標，不擋下方觸控。
+        val panel = FrameLayout(this)
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = (10 * kd).toInt()
+            setPadding(pad, (8 * kd).toInt(), pad, (8 * kd).toInt())
+        }
+        val combo = TextView(this).apply {
+            text = "—"
+            textSize = 18f
+            setTextColor(Color.WHITE)
+            setTypeface(typeface, Typeface.BOLD)
+        }
+        val sub = TextView(this).apply {
+            text = ""
+            textSize = 10f
+            setTextColor(0xFFCCCCCC.toInt())
+        }
+        comboView = combo
+        subView = sub
+        box.addView(combo)
+        box.addView(sub)
+        panel.addView(box)
+        panel.setBackgroundResource(R.drawable.score_panel_bg)
+
+        val panelParams = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+            PixelFormat.TRANSLUCENT,
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            panelParams.layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        }
+        panelParams.gravity = Gravity.TOP or Gravity.START
+        panelParams.x = 12
+        panelParams.y = 48
+        windowManager.addView(panel, panelParams)
+
         overlay = view
         routeRoot = root
         controlBar = bar
+        scorePanel = panel
     }
 
     private fun buildNotification(): Notification {
@@ -319,9 +358,13 @@ class PadService : Service() {
     private fun detachOverlays() {
         routeRoot?.let { runCatching { windowManager.removeView(it) } }
         controlBar?.let { runCatching { windowManager.removeView(it) } }
+        scorePanel?.let { runCatching { windowManager.removeView(it) } }
         routeRoot = null
         controlBar = null
+        scorePanel = null
         overlay = null
+        comboView = null
+        subView = null
         boardRect = null
     }
 
