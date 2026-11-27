@@ -196,8 +196,13 @@ class RouteBoardView @JvmOverloads constructor(
             if (tangentLen < 1f) continue
             tx /= tangentLen
             ty /= tangentLen
-            val nx = -ty
-            val ny = tx
+            // 法向取固定朝向（與行走方向無關），避免去回程法向相反造成左右不對稱。
+            var nx = -ty
+            var ny = tx
+            if (nx < 0f || (kotlin.math.abs(nx) < 1e-6f && ny < 0f)) {
+                nx = -nx
+                ny = -ny
+            }
 
             val k = edgeKey(route[i], route[i + 1])
             val repeat = edgeCount[k] ?: 1
@@ -206,8 +211,8 @@ class RouteBoardView @JvmOverloads constructor(
             val lane = edgeSeen[k] ?: 0
             edgeSeen[k] = lane + 1
 
-            // 對稱車道：N=2 → ±12dp；N=3 → -14dp, 0, +14dp；更多條在盤內均勻展開。
-            // 重疊/折返段沿法向（橫線上下、豎線左右）至少錯開 12dp，避免疊成同一條線。
+            // 嚴格以中心線對稱分配：N=2 → ±12dp；N=3 → -14dp, 0, +14dp。
+            // 位置 = (lane - (N-1)/2) * 車道間距，兩側到中心線距離相等。
             val spread = if (repeat == 2) 12f else 14f
             val half = (repeat - 1) / 2f
             val step = if (repeat == 1) 0f else (2f * spread / (repeat - 1))
