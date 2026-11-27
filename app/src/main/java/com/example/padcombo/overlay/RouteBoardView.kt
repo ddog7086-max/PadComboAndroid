@@ -171,9 +171,9 @@ class RouteBoardView @JvmOverloads constructor(
 
             // 對稱位置：N=2 → ±9dp；N=3 → -12dp, 0, +12dp；更多條均勻展開。
             val spread = if (repeat == 2) 9f else 12f
-            val half = (repeat - 1) / 2.0
+            val half = (repeat - 1) / 2f
             val step = if (repeat == 1) 0f else (2f * spread / (repeat - 1))
-            val position = (lane - half) * step * density
+            val position = ((lane - half) * step * density).toFloat()
 
             segOffset[i] = Pair(nx * position, ny * position)
         }
