@@ -153,7 +153,7 @@ class RouteBoardView @JvmOverloads constructor(
             // 單層 0.18 格寬，雙層封頂 0.28 格寬，避免偏移過頭撞歪鄰珠。
             val frac = (laneFraction * min(repeat, 2)).coerceAtMost(0.28f)
             val magnitude = rect.cellSize * frac
-            segOffset[i] = nx * side * magnitude to ny * side * magnitude to ny * side * magnitude
+            segOffset[i] = Pair(nx * side * magnitude, ny * side * magnitude)
         }
 
         // 頂點偏移 = 進入線段與離開線段偏移的平均，避免接縫處折線。
