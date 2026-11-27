@@ -80,7 +80,7 @@ class RouteBoardView @JvmOverloads constructor(
             color = Color.WHITE
         }
 
-        val cornerRadius = rect.cellSize * 0.12f
+        val cornerRadius = rect.cellSize * 0.16f
         val curve = buildRoundedPath(pts, cornerRadius, rect)
 
         // 雙重保險：座標已夾取，這裡再用 clipRect 把整塊繪製區域硬性鎖在盤面內。
