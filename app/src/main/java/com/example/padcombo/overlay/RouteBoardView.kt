@@ -12,7 +12,6 @@ import com.example.padcombo.core.BoardRect
 import com.example.padcombo.core.Cell
 import com.example.padcombo.core.COLS
 import com.example.padcombo.core.ROWS
-import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sqrt
 
@@ -23,6 +22,7 @@ import kotlin.math.sqrt
  * - 基礎格點嚴格對齊 6×5 珠子圓心；單次經過的邊段偏移為 0，橫平豎直穿過珠心。
  * - 只有重訪／折返的無向邊段，沿垂直方向對稱分配到中心線兩側（平行車道）。
  * - 轉彎處用統一半徑的平滑小圓角，不做大弧度亂扭。
+ * - 所有頂點與貝塞爾控制點送入 Path 前都過 [clampPointToBoard]，確保不突出盤面邊界。
  * - 細白線 + 黑色外描邊雙層；起點小圓點、終點小箭頭皆帶細黑邊。
  */
 class RouteBoardView @JvmOverloads constructor(
@@ -77,12 +77,12 @@ class RouteBoardView @JvmOverloads constructor(
         }
 
         val cornerRadius = rect.cellSize * 0.22f
-        val curve = buildRoundedPath(pts, cornerRadius)
+        val curve = buildRoundedPath(pts, cornerRadius, rect)
         canvas.drawPath(curve, blackPaint)
         canvas.drawPath(curve, whitePaint)
 
-        // 起點小圓點：黑底描邊 + 白點。
-        val start = pts[0]
+        // 起點小圓點：黑底描邊 + 白點（座標同樣夾回盤面內框）。
+        val start = clampPointToBoard(rect, pts[0].first, pts[0].second)
         val dotR = 5.5f * density
         val outline = 1.5f * density
         val blackFill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -96,9 +96,9 @@ class RouteBoardView @JvmOverloads constructor(
         canvas.drawCircle(start.first, start.second, dotR + outline, blackFill)
         canvas.drawCircle(start.first, start.second, dotR, whiteFill)
 
-        // 終點小箭頭：黑底三角 + 白三角，沿最後一段方向。
+        // 終點小箭頭：黑底三角 + 白三角，沿最後一段方向，頂點夾回盤面內框。
         val prev = pts[pts.size - 2]
-        val end = pts.last()
+        val end = clampPointToBoard(rect, pts.last().first, pts.last().second)
         val dx = end.first - prev.first
         val dy = end.second - prev.second
         val len = sqrt(dx * dx + dy * dy)
@@ -112,11 +112,20 @@ class RouteBoardView @JvmOverloads constructor(
             fun arrowPath(scale: Float): Path {
                 val sp = s * scale
                 val a = Path()
-                a.moveTo(end.first, end.second)
-                a.lineTo(end.first - ux * sp + nx * sp * 0.6f,
-                    end.second - uy * sp + ny * sp * 0.6f)
-                a.lineTo(end.first - ux * sp - nx * sp * 0.6f,
-                    end.second - uy * sp - ny * sp * 0.6f)
+                val tip = end
+                val left = clampPointToBoard(
+                    rect,
+                    end.first - ux * sp + nx * sp * 0.6f,
+                    end.second - uy * sp + ny * sp * 0.6f,
+                )
+                val right = clampPointToBoard(
+                    rect,
+                    end.first - ux * sp - nx * sp * 0.6f,
+                    end.second - uy * sp - ny * sp * 0.6f,
+                )
+                a.moveTo(tip.first, tip.second)
+                a.lineTo(left.first, left.second)
+                a.lineTo(right.first, right.second)
                 a.close()
                 return a
             }
@@ -126,8 +135,26 @@ class RouteBoardView @JvmOverloads constructor(
     }
 
     /**
+     * 統一邊界夾取：所有頂點、偏移點、貝塞爾控制點送入 Path 前都先過這裡。
+     * - 水平：`[left + 0.18cell, right - 0.18cell]`
+     * - 垂直：`[top + 0.18cell, bottom - 0.22cell]`（底邊多留，保底行折返回角不踩出）
+     */
+    private fun clampPointToBoard(
+        rect: BoardRect,
+        x: Float,
+        y: Float,
+    ): Pair<Float, Float> {
+        val insetX = rect.cellSize * 0.18f
+        val insetTop = rect.cellSize * 0.18f
+        val insetBottom = rect.cellSize * 0.22f
+        val cx = x.coerceIn(rect.left + insetX, rect.right - insetX)
+        val cy = y.coerceIn(rect.top + insetTop, rect.bottom - insetBottom)
+        return cx to cy
+    }
+
+    /**
      * 基礎格點對齊珠心；單次邊段偏移 0，重複邊段依序號對稱分到兩側。
-     * 所有座標最後夾回盤面內框，避免掉出邊界。
+     * 所有座標最後經 [clampPointToBoard] 夾回盤面內框。
      */
     private fun buildOffsetPoints(
         route: List<Cell>,
@@ -178,35 +205,29 @@ class RouteBoardView @JvmOverloads constructor(
             segOffset[i] = Pair(nx * position, ny * position)
         }
 
-        // 內框邊距 0.25 格，任何偏移都不允許掉出盤面；底邊再收 0.15 格避免最底行線圈突底。
-        val inset = rect.cellSize * 0.25f
-        val minX = rect.left + inset
-        val maxX = rect.right - inset
-        val minY = rect.top + inset
-        val maxY = rect.bottom - rect.cellSize * 0.15f
-
         val out = mutableListOf<Pair<Float, Float>>()
         for (i in base.indices) {
             val inc = if (i > 0) segOffset[i - 1] else null
             val outg = if (i < segOffset.size) segOffset[i] else null
             val ox = listOfNotNull(inc?.first, outg?.first).averageOrZero()
             val oy = listOfNotNull(inc?.second, outg?.second).averageOrZero()
-            val x = (base[i].first + ox).coerceIn(minX, maxX)
-            val y = (base[i].second + oy).coerceIn(minY, maxY)
-            out.add(x to y)
+            out.add(clampPointToBoard(rect, base[i].first + ox, base[i].second + oy))
         }
         return out
     }
 
-    /** 橫平豎直折線 + 統一半徑圓角，轉彎處用二次貝塞爾過渡。 */
+    /** 橫平豎直折線 + 統一半徑圓角；控制點與端點全部先過 [clampPointToBoard]。 */
     private fun buildRoundedPath(
         pts: List<Pair<Float, Float>>,
         radius: Float,
+        rect: BoardRect,
     ): Path {
         val path = Path()
-        path.moveTo(pts[0].first, pts[0].second)
+        val start = clampPointToBoard(rect, pts[0].first, pts[0].second)
+        path.moveTo(start.first, start.second)
         if (pts.size == 2) {
-            path.lineTo(pts[1].first, pts[1].second)
+            val end = clampPointToBoard(rect, pts[1].first, pts[1].second)
+            path.lineTo(end.first, end.second)
             return path
         }
 
@@ -222,18 +243,30 @@ class RouteBoardView @JvmOverloads constructor(
             val d2y = next.second - p.second
             val l2 = sqrt(d2x * d2x + d2y * d2y)
             if (l1 < 1f || l2 < 1f) {
-                path.lineTo(p.first, p.second)
+                val pc = clampPointToBoard(rect, p.first, p.second)
+                path.lineTo(pc.first, pc.second)
                 continue
             }
 
             val r = min(radius, min(l1, l2) / 2f)
-            val pA = Pair(p.first - d1x / l1 * r, p.second - d1y / l1 * r)
-            val pB = Pair(p.first + d2x / l2 * r, p.second + d2y / l2 * r)
+            val pA = clampPointToBoard(
+                rect,
+                p.first - d1x / l1 * r,
+                p.second - d1y / l1 * r,
+            )
+            // 轉彎控制點（quadTo 的 cx, cy）同樣納入邊界限制。
+            val pCtrl = clampPointToBoard(rect, p.first, p.second)
+            val pB = clampPointToBoard(
+                rect,
+                p.first + d2x / l2 * r,
+                p.second + d2y / l2 * r,
+            )
 
             path.lineTo(pA.first, pA.second)
-            path.quadTo(p.first, p.second, pB.first, pB.second)
+            path.quadTo(pCtrl.first, pCtrl.second, pB.first, pB.second)
         }
-        path.lineTo(pts.last().first, pts.last().second)
+        val last = clampPointToBoard(rect, pts.last().first, pts.last().second)
+        path.lineTo(last.first, last.second)
         return path
     }
 
