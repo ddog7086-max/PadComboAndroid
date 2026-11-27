@@ -206,8 +206,9 @@ class RouteBoardView @JvmOverloads constructor(
             val lane = edgeSeen[k] ?: 0
             edgeSeen[k] = lane + 1
 
-            // 對稱位置：N=2 → ±9dp；N=3 → -12dp, 0, +12dp；更多條均勻展開。
-            val spread = if (repeat == 2) 9f else 12f
+            // 對稱車道：N=2 → ±12dp；N=3 → -14dp, 0, +14dp；更多條在盤內均勻展開。
+            // 重疊/折返段沿法向（橫線上下、豎線左右）至少錯開 12dp，避免疊成同一條線。
+            val spread = if (repeat == 2) 12f else 14f
             val half = (repeat - 1) / 2f
             val step = if (repeat == 1) 0f else (2f * spread / (repeat - 1))
             val position = ((lane - half) * step * density).toFloat()
