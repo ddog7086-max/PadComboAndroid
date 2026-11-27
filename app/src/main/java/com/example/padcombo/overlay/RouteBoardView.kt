@@ -14,13 +14,16 @@ import com.example.padcombo.core.COLS
 import com.example.padcombo.core.ROWS
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sqrt
 
 /**
- * 遊戲內懸浮疊加層：細白二次貝塞爾平滑曲線，起點白圓點、終點白箭頭。
- * 盤面矩形 [boardRect] 與辨識共用同一套計算。
+ * 遊戲內懸浮疊加層。
  *
- * 路徑層次錯開：重複路段依線段級法向偏移平行分道，去回程落在不同側；
- * 車道偏移 [laneFraction] 以格寬為基準（單層 0.18、封頂 0.28）。
+ * 繪製規則：
+ * - 基礎格點嚴格對齊 6×5 珠子圓心；單次經過的邊段偏移為 0，橫平豎直穿過珠心。
+ * - 只有重訪／折返的無向邊段，沿垂直方向對稱分配到中心線兩側（平行車道）。
+ * - 轉彎處用統一半徑的平滑小圓角，不做大弧度亂扭。
+ * - 細白線 + 黑色外描邊雙層；起點小圓點、終點小箭頭皆帶細黑邊。
  */
 class RouteBoardView @JvmOverloads constructor(
     context: Context,
@@ -32,9 +35,6 @@ class RouteBoardView @JvmOverloads constructor(
 
     /** 是否顯示淡色 6×5 格網輔助線。 */
     var showGrid: Boolean = false
-
-    /** 重複路段平行錯開比例（相對格寬），單層 0.39，封頂 0.42。 */
-    var laneFraction: Float = 0.39f
 
     private var route: List<Cell> = emptyList()
 
@@ -55,12 +55,11 @@ class RouteBoardView @JvmOverloads constructor(
         if (showGrid) drawGrid(canvas, rect)
         if (route.size < 2) return
 
-        val pts = offsetRepeatedCells(route, rect)
-
         val density = resources.displayMetrics.density
-        val cell = rect.cellSize
-        val whiteWidth = 2.5f * density
-        val blackWidth = whiteWidth * 1.8f
+        val pts = buildOffsetPoints(route, rect, density)
+
+        val whiteWidth = 2.2f * density
+        val blackWidth = 4.2f * density
 
         val blackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             strokeWidth = blackWidth
@@ -77,21 +76,15 @@ class RouteBoardView @JvmOverloads constructor(
             color = Color.WHITE
         }
 
-        val curve = Path()
-        curve.moveTo(pts[0].first, pts[0].second)
-        for (i in 1 until pts.size - 1) {
-            val mx = (pts[i].first + pts[i + 1].first) / 2f
-            val my = (pts[i].second + pts[i + 1].second) / 2f
-            curve.quadTo(pts[i].first, pts[i].second, mx, my)
-        }
-        curve.lineTo(pts.last().first, pts.last().second)
-        // 雙層描邊：先黑框底層，再疊細白線。
+        val cornerRadius = rect.cellSize * 0.22f
+        val curve = buildRoundedPath(pts, cornerRadius)
         canvas.drawPath(curve, blackPaint)
         canvas.drawPath(curve, whitePaint)
 
-        // 起點白圓點（先畫較大黑底再疊白點）
+        // 起點小圓點：黑底描邊 + 白點。
         val start = pts[0]
-        val dotR = cell * 0.14f
+        val dotR = 5.5f * density
+        val outline = 1.5f * density
         val blackFill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.BLACK
             style = Paint.Style.FILL
@@ -100,95 +93,98 @@ class RouteBoardView @JvmOverloads constructor(
             color = Color.WHITE
             style = Paint.Style.FILL
         }
-        canvas.drawCircle(start.first, start.second, dotR * 1.5f, blackFill)
+        canvas.drawCircle(start.first, start.second, dotR + outline, blackFill)
         canvas.drawCircle(start.first, start.second, dotR, whiteFill)
 
-        // 終點白箭頭（先畫較大黑底三角再疊白三角，沿最後一段方向）
+        // 終點小箭頭：黑底三角 + 白三角，沿最後一段方向。
         val prev = pts[pts.size - 2]
         val end = pts.last()
         val dx = end.first - prev.first
         val dy = end.second - prev.second
-        val len = Math.hypot(dx.toDouble(), dy.toDouble()).toFloat()
+        val len = sqrt(dx * dx + dy * dy)
         if (len > 1f) {
             val ux = dx / len
             val uy = dy / len
-            val px = -uy
-            val py = ux
-            val s = cell * 0.18f
+            val nx = -uy
+            val ny = ux
+            val s = rect.cellSize * 0.16f
 
             fun arrowPath(scale: Float): Path {
                 val sp = s * scale
                 val a = Path()
                 a.moveTo(end.first, end.second)
-                a.lineTo(
-                    end.first - ux * sp + px * sp * 0.6f,
-                    end.second - uy * sp + py * sp * 0.6f,
-                )
-                a.lineTo(
-                    end.first - ux * sp - px * sp * 0.6f,
-                    end.second - uy * sp - py * sp * 0.6f,
-                )
+                a.lineTo(end.first - ux * sp + nx * sp * 0.6f,
+                    end.second - uy * sp + ny * sp * 0.6f)
+                a.lineTo(end.first - ux * sp - nx * sp * 0.6f,
+                    end.second - uy * sp - ny * sp * 0.6f)
                 a.close()
                 return a
             }
-            canvas.drawPath(arrowPath(1.4f), blackFill)
+            canvas.drawPath(arrowPath(1.35f), blackFill)
             canvas.drawPath(arrowPath(1.0f), whiteFill)
         }
     }
 
     /**
-     * 線段級車道錯開：對每一步有向線段 `P_i -> P_{i+1}` 計算切線與法向量，
-     * 依「第幾次經過」給階梯式法向偏移，去程/回程交錯落在法向量兩側，
-     * 再把相鄰線段在共用頂點處的偏移取平均，維持平滑貝塞爾連接。
+     * 基礎格點對齊珠心；單次邊段偏移 0，重複邊段依序號對稱分到兩側。
+     * 所有座標最後夾回盤面內框，避免掉出邊界。
      */
-    private fun offsetRepeatedCells(
+    private fun buildOffsetPoints(
         route: List<Cell>,
         rect: BoardRect,
+        density: Float,
     ): List<Pair<Float, Float>> {
         val base = route.map { (r, c) -> rect.center(c, r) }
         if (base.size < 2) return base
 
-        // 每格造訪次序：第一次 = 0，第二次 = 1，依此類推。
-        val seen = HashMap<Cell, Int>()
-        val occurrence = IntArray(route.size)
-        for (i in route.indices) {
-            val k = seen[route[i]] ?: 0
-            occurrence[i] = k
-            seen[route[i]] = k + 1
+        // 統計每個無向邊被經過的次數。
+        val edgeKey = { a: Cell, b: Cell ->
+            val la = "${a.first},${a.second}"
+            val lb = "${b.first},${b.second}"
+            if (la <= lb) "$la|$lb" else "$lb|$la"
         }
+        val edgeCount = HashMap<String, Int>()
+        for (i in 0 until base.size - 1) {
+            val k = edgeKey(route[i], route[i + 1])
+            edgeCount[k] = (edgeCount[k] ?: 0) + 1
+        }
+        val edgeSeen = HashMap<String, Int>()
 
-        // 每條線段的法向偏移向量
+        // 每條線段的法向對稱偏移向量。
         val segOffset = Array(base.size - 1) { Pair(0f, 0f) }
         for (i in 0 until base.size - 1) {
             var tx = base[i + 1].first - base[i].first
             var ty = base[i + 1].second - base[i].second
-            val tangentLen = Math.hypot(tx.toDouble(), ty.toDouble()).toFloat()
+            val tangentLen = sqrt(tx * tx + ty * ty)
             if (tangentLen < 1f) continue
             tx /= tangentLen
             ty /= tangentLen
             val nx = -ty
             val ny = tx
 
-            // 以線段兩端的最大造訪次數作為該段重複級別。
-            val repeat = max(occurrence[i], occurrence[i + 1])
-            if (repeat == 0) continue
+            val k = edgeKey(route[i], route[i + 1])
+            val repeat = edgeCount[k] ?: 1
+            if (repeat < 2) continue // 單次路段：偏移 0，筆直穿珠心。
 
-            // 奇數次往 + 側、偶數次往 - 側，去回程分開；幅度隨次數階梯放大。
-            val side = if (repeat % 2 == 1) 1f else -1f
-            // 單層 0.39 格寬，雙層封頂 0.42 格寬，偏移不超出格邊。
-            val frac = (laneFraction * min(repeat, 2)).coerceAtMost(0.42f)
-            val magnitude = rect.cellSize * frac
-            segOffset[i] = Pair(nx * side * magnitude, ny * side * magnitude)
+            val lane = edgeSeen[k] ?: 0
+            edgeSeen[k] = lane + 1
+
+            // 對稱位置：N=2 → ±9dp；N=3 → -12dp, 0, +12dp；更多條均勻展開。
+            val spread = if (repeat == 2) 9f else 12f
+            val half = (repeat - 1) / 2.0
+            val step = if (repeat == 1) 0f else (2f * spread / (repeat - 1))
+            val position = (lane - half) * step * density
+
+            segOffset[i] = Pair(nx * position, ny * position)
         }
 
-        // 頂點偏移 = 進入線段與離開線段偏移的平均，避免接縫處折線。
-        // 再把結果夾回盤面矩形內（留 0.12 格邊距），防止法向偏移把線段/箭頭
-        // 推出底行或撞出左右格邊，造成整體單向漂移的錯覺。
-        val inset = rect.cellSize * 0.12f
+        // 內框邊距 0.25 格，任何偏移都不允許掉出盤面。
+        val inset = rect.cellSize * 0.25f
         val minX = rect.left + inset
         val maxX = rect.right - inset
         val minY = rect.top + inset
         val maxY = rect.bottom - inset
+
         val out = mutableListOf<Pair<Float, Float>>()
         for (i in base.indices) {
             val inc = if (i > 0) segOffset[i - 1] else null
@@ -200,6 +196,45 @@ class RouteBoardView @JvmOverloads constructor(
             out.add(x to y)
         }
         return out
+    }
+
+    /** 橫平豎直折線 + 統一半徑圓角，轉彎處用二次貝塞爾過渡。 */
+    private fun buildRoundedPath(
+        pts: List<Pair<Float, Float>>,
+        radius: Float,
+    ): Path {
+        val path = Path()
+        path.moveTo(pts[0].first, pts[0].second)
+        if (pts.size == 2) {
+            path.lineTo(pts[1].first, pts[1].second)
+            return path
+        }
+
+        for (i in 1 until pts.size - 1) {
+            val prev = pts[i - 1]
+            val p = pts[i]
+            val next = pts[i + 1]
+
+            val d1x = p.first - prev.first
+            val d1y = p.second - prev.second
+            val l1 = sqrt(d1x * d1x + d1y * d1y)
+            val d2x = next.first - p.first
+            val d2y = next.second - p.second
+            val l2 = sqrt(d2x * d2x + d2y * d2y)
+            if (l1 < 1f || l2 < 1f) {
+                path.lineTo(p.first, p.second)
+                continue
+            }
+
+            val r = min(radius, min(l1, l2) / 2f)
+            val pA = Pair(p.first - d1x / l1 * r, p.second - d1y / l1 * r)
+            val pB = Pair(p.first + d2x / l2 * r, p.second + d2y / l2 * r)
+
+            path.lineTo(pA.first, pA.second)
+            path.quadTo(p.first, p.second, pB.first, pB.second)
+        }
+        path.lineTo(pts.last().first, pts.last().second)
+        return path
     }
 
     private fun List<Float>.averageOrZero(): Float =
