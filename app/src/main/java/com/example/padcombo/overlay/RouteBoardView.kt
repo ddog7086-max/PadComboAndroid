@@ -178,12 +178,12 @@ class RouteBoardView @JvmOverloads constructor(
             segOffset[i] = Pair(nx * position, ny * position)
         }
 
-        // 內框邊距 0.25 格，任何偏移都不允許掉出盤面。
+        // 內框邊距 0.25 格，任何偏移都不允許掉出盤面；底邊再收 0.15 格避免最底行線圈突底。
         val inset = rect.cellSize * 0.25f
         val minX = rect.left + inset
         val maxX = rect.right - inset
         val minY = rect.top + inset
-        val maxY = rect.bottom - inset
+        val maxY = rect.bottom - rect.cellSize * 0.15f
 
         val out = mutableListOf<Pair<Float, Float>>()
         for (i in base.indices) {

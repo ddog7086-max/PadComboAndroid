@@ -290,7 +290,8 @@ class PadService : Service() {
             orientation = LinearLayout.VERTICAL
             val padX = (18 * kd).toInt()
             val padY = (12 * kd).toInt()
-            setPadding(padX, padY, padX, padY)
+            val padEnd = (26 * kd).toInt()
+            setPadding(padX, padY, padEnd, padY)
         }
         val combo = TextView(this).apply {
             text = "—"
