@@ -5,13 +5,6 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
-/** 盤面 ROI，歸一化 0..1（相對於整張截圖） */
-data class RoiRect(val x: Double, val y: Double, val width: Double, val height: Double) {
-    companion object {
-        val FULL = RoiRect(0.0, 0.0, 1.0, 1.0)
-    }
-}
-
 data class CellInfo(
     val orb: Orb,
     /** 0..1，越接近 1 越有把握 */
@@ -31,6 +24,9 @@ private data class Prototype(val orb: Orb, val h: Double, val s: Double, val v: 
 object BoardRecognizer {
 
     private const val CONFIDENCE_THRESHOLD = 0.55
+
+    /** 取樣覆蓋每格中央 36%（半寬 0.18 格），避開珠子邊框與格線。 */
+    private const val SAMPLE_HALF = 0.18f
 
     private val PROTOTYPES = listOf(
         Prototype(Orb.FIRE, 8.0, 0.85, 0.95),
@@ -107,24 +103,23 @@ object BoardRecognizer {
         return CellInfo(best.orb, confidence, warnings)
     }
 
-    private fun sampleCell(bitmap: Bitmap, roi: RoiRect, row: Int, col: Int): List<Triple<Int, Int, Int>> {
+    /**
+     * 在指定盤面矩形內，每格中央 36% 區域取 3×3 中位數 RGB。
+     * [rect] 必須與疊加繪圖使用同一個 [BoardRect]。
+     */
+    private fun sampleCell(bitmap: Bitmap, rect: BoardRect, row: Int, col: Int): List<Triple<Int, Int, Int>> {
         val w = bitmap.width
         val h = bitmap.height
-        val roiX = roi.x * w
-        val roiY = roi.y * h
-        val roiW = roi.width * w
-        val roiH = roi.height * h
-        val cellW = roiW / COLS
-        val cellH = roiH / ROWS
+        val (cx, cy) = rect.center(col, row)
+        val half = SAMPLE_HALF * rect.cellSize
 
         val samples = mutableListOf<Triple<Int, Int, Int>>()
-        val inner = 0.2
         for (iy in 0 until 3) {
             for (ix in 0 until 3) {
-                val fx = inner + (ix / 2.0) * (1 - inner * 2)
-                val fy = inner + (iy / 2.0) * (1 - inner * 2)
-                val px = Math.round(roiX + (col + fx) * cellW).toInt()
-                val py = Math.round(roiY + (row + fy) * cellH).toInt()
+                val fx = (ix - 1) * half
+                val fy = (iy - 1) * half
+                val px = (cx + fx).toInt()
+                val py = (cy + fy).toInt()
                 if (px < 0 || px >= w || py < 0 || py >= h) continue
                 val pixel = bitmap.getPixel(px, py)
                 val r = (pixel shr 16) and 0xFF
@@ -136,15 +131,15 @@ object BoardRecognizer {
         return samples
     }
 
-    /** 從 Bitmap 依歸一化 ROI 均分 6×5 格，辨識六色並輸出 Board。 */
-    fun recognizeBitmap(bitmap: Bitmap, roi: RoiRect = RoiRect.FULL): RecognizeResult {
+    /** 從全螢幕 Bitmap，依共用 [BoardRect] 裁切 6×5 格辨識六色並輸出 Board。 */
+    fun recognizeBitmap(bitmap: Bitmap, rect: BoardRect): RecognizeResult {
         val board = Array(ROWS) { arrayOf(Orb.FIRE) }
         val cells = mutableListOf<List<CellInfo>>()
         for (row in 0 until ROWS) {
             val boardRow = mutableListOf<Orb>()
             val cellRow = mutableListOf<CellInfo>()
             for (col in 0 until COLS) {
-                val info = classifySample(sampleCell(bitmap, roi, row, col))
+                val info = classifySample(sampleCell(bitmap, rect, row, col))
                 boardRow.add(info.orb)
                 cellRow.add(info)
             }

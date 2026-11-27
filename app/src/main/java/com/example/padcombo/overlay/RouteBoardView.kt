@@ -8,22 +8,27 @@ import android.graphics.Path
 import android.util.AttributeSet
 import android.view.View
 import com.example.padcombo.core.Board
+import com.example.padcombo.core.BoardRect
 import com.example.padcombo.core.Cell
 import com.example.padcombo.core.COLS
 import com.example.padcombo.core.ROWS
-import com.example.padcombo.core.RoiRect
-import kotlin.math.min
 
 /**
  * 遊戲內懸浮疊加層：細白二次貝塞爾平滑曲線，起點白圓點、終點白箭頭，
- * 中段不畫分段箭頭；折返處自然繞行，對齊 6×5 格心。
+ * 中段不畫分段箭頭；折返處自然繞行。盤面矩形 [boardRect] 與辨識共用同一套計算，
+ * 格心座標 cx = left + (col + 0.5f) * cellSize、cy = top + (row + 0.5f) * cellSize。
  */
 class RouteBoardView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
 ) : View(context, attrs) {
 
-    var boardRect: RoiRect = RoiRect.FULL
+    /** 與 BoardRecognizer 共用的盤面矩形（全螢幕像素座標）。 */
+    var boardRect: BoardRect? = null
+
+    /** 是否顯示淡色 6×5 格網輔助線。 */
+    var showGrid: Boolean = false
+
     private var route: List<Cell> = emptyList()
 
     fun show(board: Board, path: List<Cell>) {
@@ -38,22 +43,14 @@ class RouteBoardView @JvmOverloads constructor(
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
+        val rect = boardRect ?: return
+
+        if (showGrid) drawGrid(canvas, rect)
         if (route.size < 2) return
 
-        val rect = boardRect
-        val ox = (rect.x * width).toFloat()
-        val oy = (rect.y * height).toFloat()
-        val cellW = (rect.width * width / COLS).toFloat()
-        val cellH = (rect.height * height / ROWS).toFloat()
-        val cell = min(cellW, cellH)
+        val pts = route.map { (r, c) -> rect.center(c, r) }
 
-        fun center(cellPos: Cell): Pair<Float, Float> {
-            val (r, c) = cellPos
-            return ox + (c + 0.5f) * cellW to oy + (r + 0.5f) * cellH
-        }
-
-        val pts = route.map { center(it) }
-
+        val cell = rect.cellSize
         val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             strokeWidth = cell * 0.085f
             strokeCap = Paint.Cap.ROUND
@@ -104,6 +101,24 @@ class RouteBoardView @JvmOverloads constructor(
             )
             arrow.close()
             canvas.drawPath(arrow, startPaint)
+        }
+    }
+
+    private fun drawGrid(canvas: Canvas, rect: BoardRect) {
+        val gridPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0x55FFFFFF
+            strokeWidth = 1f
+            style = Paint.Style.STROKE
+        }
+        // 垂直線
+        for (c in 0..COLS) {
+            val x = rect.left + c * rect.cellSize
+            canvas.drawLine(x, rect.top, x, rect.bottom, gridPaint)
+        }
+        // 水平線
+        for (r in 0..ROWS) {
+            val y = rect.top + r * rect.cellSize
+            canvas.drawLine(rect.left, y, rect.right, y, gridPaint)
         }
     }
 }

@@ -26,15 +26,15 @@ import android.widget.TextView
 import androidx.core.app.NotificationCompat
 import com.example.padcombo.R
 import com.example.padcombo.core.Board
+import com.example.padcombo.core.BoardRect
+import com.example.padcombo.core.BoardRectHelper
 import com.example.padcombo.core.BoardRecognizer
 import com.example.padcombo.core.BeamSearchSolver
 import com.example.padcombo.core.CalcMode
 import com.example.padcombo.core.MovesPref
-import com.example.padcombo.core.RoiRect
 import com.example.padcombo.core.SearchConfig
 import com.example.padcombo.overlay.RouteBoardView
 import java.util.concurrent.Executors
-import kotlin.math.min
 
 /**
  * 前景服務：MediaProjection 抓幀 → 辨識 6×5 盤面 → Beam Search 算路徑 →
@@ -64,6 +64,9 @@ class PadService : Service() {
     private var projection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var imageReader: ImageReader? = null
+
+    /** 與辨識、繪圖共用的盤面矩形（全螢幕像素座標）。 */
+    private var boardRect: BoardRect? = null
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var solverExecutor = Executors.newSingleThreadExecutor()
@@ -114,10 +117,17 @@ class PadService : Service() {
     }
 
     private fun startCapture() {
-        val metrics: DisplayMetrics = resources.displayMetrics
-        val w = metrics.widthPixels
-        val h = metrics.heightPixels
-        val density = metrics.densityDpi
+        val (w, h) = realScreenSize()
+        val density = resources.displayMetrics.densityDpi
+
+        // 辨識與疊加繪圖共用同一盤面矩形：滿寬正方形格網、緊貼底部。
+        boardRect = BoardRectHelper.compute(
+            screenWidth = w,
+            screenHeight = h,
+            scale = 1f,
+            bottomOffset = 0f,
+            bottomInset = 0f,
+        )
 
         imageReader = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 2)
         virtualDisplay = projection?.createVirtualDisplay(
@@ -128,11 +138,25 @@ class PadService : Service() {
         )
     }
 
+    /** 取得含狀態列/導航條、挖孔在內的真實螢幕尺寸（避免沉浸式偏移）。 */
+    private fun realScreenSize(): Pair<Int, Int> {
+        val wm = getSystemService(WINDOW_SERVICE) as WindowManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val bounds = wm.currentWindowMetrics.bounds
+            return bounds.width() to bounds.height()
+        }
+        val dm = DisplayMetrics()
+        @Suppress("DEPRECATION")
+        wm.defaultDisplay.getRealMetrics(dm)
+        return dm.widthPixels to dm.heightPixels
+    }
+
     private fun restoreAnalyzeBtn() { analyzeBtn?.isEnabled = true }
 
     private fun analyze() {
         analyzeBtn?.isEnabled = false
         val reader = imageReader ?: run { restoreAnalyzeBtn(); return }
+        val rect = boardRect ?: run { restoreAnalyzeBtn(); return }
         val image = reader.acquireLatestImage() ?: run { restoreAnalyzeBtn(); return }
 
         val bitmap = try {
@@ -146,26 +170,22 @@ class PadService : Service() {
                 Bitmap.Config.ARGB_8888,
             )
             padded.copyPixelsFromBuffer(buffer)
-            val scale = min(1.0, 900.0 / padded.width)
-            if (scale < 1.0) {
-                Bitmap.createScaledBitmap(
-                    padded, (padded.width * scale).toInt(),
-                    (padded.height * scale).toInt(), true,
-                ).also { if (it != padded) padded.recycle() }
-            } else padded
+            padded
         } catch (e: Exception) {
             null
         } finally {
             image.close()
         } ?: run { restoreAnalyzeBtn(); return }
 
-        val recognized = BoardRecognizer.recognizeBitmap(bitmap, RoiRect.FULL)
+        // 直接用全螢幕像素座標取樣，不縮放 Bitmap，保持 rect 座標一致。
+        val recognized = BoardRecognizer.recognizeBitmap(bitmap, rect)
         val board: Board = recognized.board
         bitmap.recycle()
 
         solverExecutor.execute {
             val result = BeamSearchSolver.beamSearch(board, searchConfig)
             mainHandler.post {
+                overlay?.boardRect = rect
                 overlay?.show(board, result.path)
                 val cleared = result.clearStat.values.sum()
                 resultView?.text =
@@ -180,6 +200,8 @@ class PadService : Service() {
 
         val root = FrameLayout(this)
         val view = RouteBoardView(this)
+        view.boardRect = boardRect
+        view.showGrid = false
         root.addView(
             view,
             FrameLayout.LayoutParams(
@@ -196,6 +218,10 @@ class PadService : Service() {
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
             PixelFormat.TRANSLUCENT,
         )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            params.layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        }
         windowManager.addView(root, params)
 
         val bar = FrameLayout(this)
@@ -254,6 +280,10 @@ class PadService : Service() {
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT,
         )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            barParams.layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        }
         barParams.gravity = Gravity.TOP or Gravity.END
         barParams.x = 8
         barParams.y = 48
@@ -292,6 +322,7 @@ class PadService : Service() {
         routeRoot = null
         controlBar = null
         overlay = null
+        boardRect = null
     }
 
     private fun teardown() {

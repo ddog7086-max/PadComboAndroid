@@ -73,4 +73,20 @@ class CoreLogicTest {
         assertTrue(res.aborted)
         assertTrue(res.path.isNotEmpty())
     }
+
+    @Test
+    fun boardRect_bottomAlignedSquareGrid() {
+        val width = 1080
+        val height = 2400
+        val rect = BoardRectHelper.compute(width, height)
+        val cell = width / 6f
+        assertEquals(cell, rect.cellSize, 1e-4f)
+        assertEquals(0f, rect.left, 1e-4f)
+        assertEquals(height - cell * 5f, rect.top, 1e-4f)
+
+        // 格心公式：cx = left + (col + 0.5) * cell，cy = top + (row + 0.5) * cell
+        val (cx, cy) = rect.center(3, 2)
+        assertEquals(0f + (3 + 0.5f) * cell, cx, 1e-3f)
+        assertEquals(height - cell * 5f + (2 + 0.5f) * cell, cy, 1e-3f)
+    }
 }
