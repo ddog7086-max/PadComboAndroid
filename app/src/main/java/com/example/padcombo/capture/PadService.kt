@@ -288,16 +288,17 @@ class PadService : Service() {
         val panel = FrameLayout(this)
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            val pad = (12 * kd).toInt()
-            setPadding(pad, (10 * kd).toInt(), pad, (10 * kd).toInt())
+            val padX = (16 * kd).toInt()
+            val padY = (12 * kd).toInt()
+            setPadding(padX, padY, padX, padY)
         }
         val combo = TextView(this).apply {
             text = "—"
             textSize = 18f
             setTextColor(Color.WHITE)
             setTypeface(typeface, Typeface.BOLD)
-            minWidth = (72 * kd).toInt()
             setSingleLine(true)
+            ellipsize = null
         }
         val sub = TextView(this).apply {
             text = ""
@@ -308,7 +309,7 @@ class PadService : Service() {
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
             )
-            lp.topMargin = (4 * kd).toInt()
+            lp.topMargin = (5 * kd).toInt()
             layoutParams = lp
         }
         comboView = combo
