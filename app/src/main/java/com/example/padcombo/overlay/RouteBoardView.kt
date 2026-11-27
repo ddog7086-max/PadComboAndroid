@@ -223,10 +223,22 @@ class RouteBoardView @JvmOverloads constructor(
 
         val out = mutableListOf<Pair<Float, Float>>()
         for (i in base.indices) {
-            val inc = if (i > 0) segOffset[i - 1] else null
-            val outg = if (i < segOffset.size) segOffset[i] else null
-            val ox = listOfNotNull(inc?.first, outg?.first).averageOrZero()
-            val oy = listOfNotNull(inc?.second, outg?.second).averageOrZero()
+            val neighbors = listOfNotNull(
+                if (i > 0) segOffset[i - 1] else null,
+                if (i < segOffset.size) segOffset[i] else null,
+            )
+            // 分軸累積：水平段只貢獻 Y 偏移、垂直段只貢獻 X 偏移，
+            // 避免兩段偏移向量混在一起平均，把水平端點拉成斜線。
+            var sumX = 0f
+            var cntX = 0
+            var sumY = 0f
+            var cntY = 0
+            for (o in neighbors) {
+                if (kotlin.math.abs(o.first) > 1e-6f) { sumX += o.first; cntX++ }
+                if (kotlin.math.abs(o.second) > 1e-6f) { sumY += o.second; cntY++ }
+            }
+            val ox = if (cntX > 0) sumX / cntX else 0f
+            val oy = if (cntY > 0) sumY / cntY else 0f
             out.add(clampPointToBoard(rect, base[i].first + ox, base[i].second + oy))
         }
         return out
@@ -285,9 +297,6 @@ class RouteBoardView @JvmOverloads constructor(
         path.lineTo(last.first, last.second)
         return path
     }
-
-    private fun List<Float>.averageOrZero(): Float =
-        if (isEmpty()) 0f else sum() / size
 
     private fun drawGrid(canvas: Canvas, rect: BoardRect) {
         val gridPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
