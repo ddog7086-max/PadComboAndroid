@@ -231,7 +231,7 @@ class RouteBoardView @JvmOverloads constructor(
                         cMax = maxOf(cMax, route[i + 1].second)
                         i++
                     }
-                    passes.add(HPass(r, start, i - 1, cMin, cMax))
+                    passes.add(HPass(r, start, i - 1, cMin, cMax, 0))
                 } else {
                     i++
                 }
