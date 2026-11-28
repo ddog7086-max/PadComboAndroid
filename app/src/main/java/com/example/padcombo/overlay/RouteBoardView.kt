@@ -187,6 +187,33 @@ class RouteBoardView @JvmOverloads constructor(
         }
         val edgeSeen = HashMap<String, Int>()
 
+        // 水平通過段（王字水平帶）：連續同 row 的水平邊歸為一條 Pass，帶內按次序編號。
+        val edgeRank = IntArray(base.size - 1) { -1 }
+        val bandN = HashMap<Int, Int>()
+        run {
+            val passes = mutableListOf<Triple<Int, Int, Int>>() // row, startEdge, endEdge
+            var i = 0
+            while (i < route.size - 1) {
+                if (route[i].first == route[i + 1].first) {
+                    val r = route[i].first
+                    val start = i
+                    while (i < route.size - 1 &&
+                        route[i].first == route[i + 1].first &&
+                        route[i].first == r
+                    ) i++
+                    passes.add(Triple(r, start, i - 1))
+                } else {
+                    i++
+                }
+            }
+            passes.groupBy { it.first }.forEach { (r, ps) ->
+                bandN[r] = ps.size
+                ps.forEachIndexed { idx, p ->
+                    for (e in p.second..p.third) edgeRank[e] = idx
+                }
+            }
+        }
+
         // 每條線段的法向對稱偏移向量。
         val segOffset = Array(base.size - 1) { Pair(0f, 0f) }
         for (i in 0 until base.size - 1) {
@@ -204,21 +231,38 @@ class RouteBoardView @JvmOverloads constructor(
                 ny = -ny
             }
 
-            val k = edgeKey(route[i], route[i + 1])
-            val repeat = edgeCount[k] ?: 1
-            if (repeat < 2) continue // 單次路段：偏移 0，筆直穿珠心。
+            val isHorizontal = route[i].first == route[i + 1].first
+            if (isHorizontal) {
+                val row = route[i].first
+                val n = bandN[row] ?: 1
+                if (n < 2) continue // 同 row 只有一條通過：留在中心線。
+                // 水平帶沿垂直法向 Y 開槽；槽距格寬比例，單邊偏移封頂 0.28 cell。
+                val active = minOf(n, 3)
+                val spacing = if (active > 1) {
+                    minOf(0.11f * rect.cellSize, 0.28f * rect.cellSize / (active - 1))
+                } else 0f
+                val rank = edgeRank[i].coerceAtMost(active - 1)
+                val slot = when (active) {
+                    1 -> 0
+                    2 -> if (rank == 0) -1 else 1
+                    else -> rank - 1
+                }
+                segOffset[i] = Pair(0f, ny * slot * spacing)
+            } else {
+                val k = edgeKey(route[i], route[i + 1])
+                val repeat = edgeCount[k] ?: 1
+                if (repeat < 2) continue // 單次路段：偏移 0，筆直穿珠心。
 
-            val lane = edgeSeen[k] ?: 0
-            edgeSeen[k] = lane + 1
+                val lane = edgeSeen[k] ?: 0
+                edgeSeen[k] = lane + 1
 
-            // 嚴格以中心線對稱分配：N=2 → ±12dp；N=3 → -14dp, 0, +14dp。
-            // 位置 = (lane - (N-1)/2) * 車道間距，兩側到中心線距離相等。
-            val spread = if (repeat == 2) 12f else 14f
-            val half = (repeat - 1) / 2f
-            val step = if (repeat == 1) 0f else (2f * spread / (repeat - 1))
-            val position = ((lane - half) * step * density).toFloat()
-
-            segOffset[i] = Pair(nx * position, ny * position)
+                // 垂直重訪邊沿水平法向 X 開槽：N=2 → ±12dp；N=3 → -14dp, 0, +14dp。
+                val spread = if (repeat == 2) 12f else 14f
+                val half = (repeat - 1) / 2f
+                val step = if (repeat == 1) 0f else (2f * spread / (repeat - 1))
+                val position = ((lane - half) * step * density).toFloat()
+                segOffset[i] = Pair(nx * position, 0f)
+            }
         }
 
         val out = mutableListOf<Pair<Float, Float>>()
@@ -238,7 +282,9 @@ class RouteBoardView @JvmOverloads constructor(
                 if (kotlin.math.abs(o.second) > 1e-6f) { sumY += o.second; cntY++ }
             }
             val ox = if (cntX > 0) sumX / cntX else 0f
-            val oy = if (cntY > 0) sumY / cntY else 0f
+            var oy = if (cntY > 0) sumY / cntY else 0f
+            // 終點箭頭保護：最後一點的垂直偏移回壓，避免箭頭被車道帶離珠心。
+            if (i == base.size - 1) oy *= 0.35f
             out.add(clampPointToBoard(rect, base[i].first + ox, base[i].second + oy))
         }
 
