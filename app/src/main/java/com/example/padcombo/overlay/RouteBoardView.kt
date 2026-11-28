@@ -241,7 +241,23 @@ class RouteBoardView @JvmOverloads constructor(
             val oy = if (cntY > 0) sumY / cntY else 0f
             out.add(clampPointToBoard(rect, base[i].first + ox, base[i].second + oy))
         }
-        return out
+
+        // 同向連鎖合併（只影響畫圖折點，不改變搜尋路徑/步數/起終點）：
+        // 連續同向段只留第一與最後一個；轉折點、重訪車道邊界點一律保留。
+        val kept = BooleanArray(out.size)
+        kept[0] = true
+        kept[out.size - 1] = true
+        for (i in 1 until out.size - 1) {
+            val prevDir = (route[i].first - route[i - 1].first) to
+                (route[i].second - route[i - 1].second)
+            val nextDir = (route[i + 1].first - route[i].first) to
+                (route[i + 1].second - route[i].second)
+            val isTurn = prevDir != nextDir
+            val prevRepeat = (edgeCount[edgeKey(route[i - 1], route[i])] ?: 1) >= 2
+            val nextRepeat = (edgeCount[edgeKey(route[i], route[i + 1])] ?: 1) >= 2
+            kept[i] = isTurn || prevRepeat || nextRepeat
+        }
+        return out.filterIndexed { i, _ -> kept[i] }
     }
 
     /** 橫平豎直折線 + 統一半徑圓角；控制點與端點全部先過 [clampPointToBoard]。 */
