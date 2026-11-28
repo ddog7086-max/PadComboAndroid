@@ -210,29 +210,45 @@ class RouteBoardView @JvmOverloads constructor(
         }
         val edgeSeen = HashMap<String, Int>()
 
-        // 水平通過段（王字水平帶）：連續同 row 的水平邊歸為一條 Pass，帶內按次序編號。
-        val edgeRank = IntArray(base.size - 1) { -1 }
+        // 水平通過段（王字水平帶）：連續同 row 的水平邊歸為一條 Pass，
+        // 依欄位涵蓋範圍重疊狀態貪心分配槽位；不重疊的段可共用同一槽。
+        val edgeSlot = IntArray(base.size - 1) { 0 }
         val bandN = HashMap<Int, Int>()
+        val passes = mutableListOf<HPass>()
         run {
-            val passes = mutableListOf<Triple<Int, Int, Int>>() // row, startEdge, endEdge
             var i = 0
             while (i < route.size - 1) {
                 if (route[i].first == route[i + 1].first) {
                     val r = route[i].first
                     val start = i
+                    var cMin = route[i].second
+                    var cMax = route[i + 1].second
                     while (i < route.size - 1 &&
                         route[i].first == route[i + 1].first &&
                         route[i].first == r
-                    ) i++
-                    passes.add(Triple(r, start, i - 1))
+                    ) {
+                        cMin = minOf(cMin, route[i + 1].second)
+                        cMax = maxOf(cMax, route[i + 1].second)
+                        i++
+                    }
+                    passes.add(HPass(r, start, i - 1, cMin, cMax))
                 } else {
                     i++
                 }
             }
-            passes.groupBy { it.first }.forEach { (r, ps) ->
-                bandN[r] = ps.size
-                ps.forEachIndexed { idx, p ->
-                    for (e in p.second..p.third) edgeRank[e] = idx
+            val slots = listOf(-1, 0, 1)
+            passes.groupBy { it.row }.forEach { (_, ps) ->
+                bandN[ps.first().row] = ps.size
+                val occupied = mutableMapOf<Int, MutableList<HPass>>()
+                ps.forEach { p ->
+                    val chosen = slots.firstOrNull { s ->
+                        occupied[s]?.none { overlap(it, p) } ?: true
+                    } ?: slots.last()
+                    p.slot = chosen
+                    occupied.getOrPut(chosen) { mutableListOf() }.add(p)
+                }
+                ps.forEach { p ->
+                    for (e in p.start..p.end) edgeSlot[e] = p.slot
                 }
             }
         }
@@ -270,12 +286,7 @@ class RouteBoardView @JvmOverloads constructor(
                 val spacing = if (active > 1) {
                     minOf(0.11f * rect.cellSize, 0.28f * rect.cellSize / (active - 1))
                 } else 0f
-                val rank = edgeRank[i].coerceAtMost(active - 1)
-                val slot = when (active) {
-                    1 -> 0
-                    2 -> if (rank == 0) -1 else 1
-                    else -> rank - 1
-                }
+                val slot = edgeSlot[i]
                 segOffset[i] = Pair(0f, ny * slot * spacing)
             } else {
                 if (!debugVerticalOffset) continue
@@ -341,9 +352,9 @@ class RouteBoardView @JvmOverloads constructor(
             val isUturn = prevDir.first == -nextDir.first && prevDir.second == -nextDir.second
             val prevRepeat = (edgeCount[edgeKey(route[i - 1], route[i])] ?: 1) >= 2
             val nextRepeat = (edgeCount[edgeKey(route[i], route[i + 1])] ?: 1) >= 2
-            val prevRank = if (i - 1 in edgeRank.indices) edgeRank[i - 1] else -1
-            val nextRank = if (i in edgeRank.indices) edgeRank[i] else -1
-            val laneSwitch = prevRank != nextRank
+            val prevSlot = if (i - 1 in edgeSlot.indices) edgeSlot[i - 1] else 0
+            val nextSlot = if (i in edgeSlot.indices) edgeSlot[i] else 0
+            val laneSwitch = prevSlot != nextSlot
             val revisited = route.indexOf(route[i]) < i
             kept[i] = isTurn || isUturn || prevRepeat || nextRepeat || laneSwitch || revisited
         }
@@ -474,4 +485,16 @@ class RouteBoardView @JvmOverloads constructor(
         val third: C,
         val fourth: D,
     )
+
+    private data class HPass(
+        val row: Int,
+        val start: Int,
+        val end: Int,
+        val cMin: Int,
+        val cMax: Int,
+        var slot: Int,
+    )
+
+    private fun overlap(a: HPass, b: HPass): Boolean =
+        minOf(a.cMax, b.cMax) >= maxOf(a.cMin, b.cMin)
 }

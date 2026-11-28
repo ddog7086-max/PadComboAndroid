@@ -11,8 +11,8 @@ android {
         applicationId = "com.example.padcombo"
         minSdk = 26
         targetSdk = 34
-        versionCode = 5
-        versionName = "1.3.1"
+        versionCode = 6
+        versionName = "1.3.2"
     }
 
     // 固定簽名 keystore，CI 每次打包共用同一簽名，可直接覆蓋安裝免解除安裝。
